@@ -19,3 +19,6 @@
 #define OLED_TIMEOUT 30000
 #define OLED_BRIGHTNESS 128
 #endif
+
+// Tapping configuration
+#define TAPPING_TOGGLE 2
