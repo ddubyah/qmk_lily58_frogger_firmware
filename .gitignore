@@ -82,10 +82,10 @@ tags
 # Ignore image/font files
 *.bmp
 *.wbmp
-*.gif
-*.jpg
-*.jpeg
-*.png
+# *.gif
+# *.jpg
+# *.jpeg
+# *.png
 *.apng
 *.mng
 *.svg
