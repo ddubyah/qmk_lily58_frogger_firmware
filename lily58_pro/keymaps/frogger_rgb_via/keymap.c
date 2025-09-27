@@ -3,6 +3,29 @@
 
 #include QMK_KEYBOARD_H
 
+// QMK Trainer CLI Commands
+#define CMD_GET_LED_MAP    0x01  // Return matrix_co mapping
+#define CMD_HIGHLIGHT_LEDS 0x02  // Highlight given LED indexes with layer colors
+#define CMD_TRAINER_BEGIN  0x03  // Save RGB mode, set backdrop
+#define CMD_TRAINER_END    0x04  // Restore RGB mode
+#define CMD_OLED_TEXT      0x10  // Display text on OLED
+
+// Trainer state variables
+static uint8_t hilite_leds[20];        // LED indexes to highlight
+static uint8_t hilite_count = 0;       // Number of LEDs to highlight
+static uint8_t hilite_r = 255;         // Red component
+static uint8_t hilite_g = 255;         // Green component
+static uint8_t hilite_b = 255;         // Blue component
+static uint16_t hilite_duration = 0;   // Duration in milliseconds
+static uint32_t hilite_started = 0;    // Timer start
+static bool trainer_active = false;    // Trainer mode flag
+static uint8_t saved_mode;   // Saved RGB mode
+
+#ifdef OLED_ENABLE
+static char oled_buffer[64];           // OLED text buffer
+static bool oled_text_active = false; // OLED text mode flag
+#endif
+
 // clang-format off
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
@@ -58,3 +81,130 @@ const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
 };
 #endif
 // clang-format on
+
+// VIA Custom Command Handler
+void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
+    switch (data[0]) {
+        case CMD_GET_LED_MAP: {
+            // Send g_led_config.matrix_co mapping back via raw_hid_send
+            uint8_t response[32] = {0};
+            uint8_t idx = 1; // Skip command byte
+            
+            // Pack matrix rows and columns with their LED indexes
+            for (uint8_t row = 0; row < MATRIX_ROWS && idx < 31; row++) {
+                for (uint8_t col = 0; col < MATRIX_COLS && idx < 29; col++) {
+                    uint8_t led_idx = g_led_config.matrix_co[row][col];
+                    if (led_idx != NO_LED && idx < 29) {
+                        response[idx++] = row;
+                        response[idx++] = col;
+                        response[idx++] = led_idx;
+                    }
+                }
+            }
+            response[0] = CMD_GET_LED_MAP; // Echo command
+            // VIA will handle the response automatically
+            memcpy(data, response, 32);
+            break;
+        }
+        
+        case CMD_HIGHLIGHT_LEDS: {
+            if (length >= 3) {
+                hilite_count = data[1];
+                if (hilite_count > 20) hilite_count = 20; // Limit array bounds
+                
+                // Copy LED indexes
+                for (uint8_t i = 0; i < hilite_count && (2 + i) < length; i++) {
+                    hilite_leds[i] = data[2 + i];
+                }
+                
+                // Extract RGB color values (3 bytes after LED indexes)
+                if (length >= (2 + hilite_count + 3)) {
+                    hilite_r = data[2 + hilite_count];
+                    hilite_g = data[2 + hilite_count + 1];
+                    hilite_b = data[2 + hilite_count + 2];
+                }
+                
+                // Extract duration (2 bytes at end)
+                if (length >= (2 + hilite_count + 5)) {
+                    hilite_duration = (data[length - 2]) | (data[length - 1] << 8);
+                } else {
+                    hilite_duration = 2000; // Default 2 seconds
+                }
+                
+                hilite_started = timer_read32();
+            }
+            break;
+        }
+        
+        case CMD_TRAINER_BEGIN: {
+            trainer_active = true;
+            saved_mode = rgb_matrix_get_mode();
+            // Set a neutral backdrop mode
+            rgb_matrix_mode(RGB_MATRIX_SOLID_COLOR);
+            rgb_matrix_sethsv(0, 0, 50); // Low brightness white backdrop
+            break;
+        }
+        
+        case CMD_TRAINER_END: {
+            trainer_active = false;
+            hilite_count = 0; // Clear highlights
+            rgb_matrix_mode(saved_mode); // Restore previous mode
+#ifdef OLED_ENABLE
+            oled_text_active = false; // Clear OLED text
+#endif
+            break;
+        }
+        
+#ifdef OLED_ENABLE
+        case CMD_OLED_TEXT: {
+            if (length >= 2) {
+                uint8_t text_len = length - 1;
+                if (text_len > 63) text_len = 63; // Limit buffer size
+                
+                memcpy(oled_buffer, &data[1], text_len);
+                oled_buffer[text_len] = 0; // Null terminate
+                oled_text_active = true;
+            }
+            break;
+        }
+#endif
+    }
+}
+
+// RGB Matrix Indicators for LED highlighting
+bool rgb_matrix_indicators_advanced_user(uint8_t led_min, uint8_t led_max) {
+    if (hilite_count > 0 && timer_elapsed32(hilite_started) < hilite_duration) {
+        for (uint8_t i = 0; i < hilite_count; i++) {
+            uint8_t idx = hilite_leds[i];
+            if (idx >= led_min && idx < led_max) {
+                rgb_matrix_set_color(idx, hilite_r, hilite_g, hilite_b);
+            }
+        }
+    }
+    return false;
+}
+
+#ifdef OLED_ENABLE
+// OLED Display Handler
+bool oled_task_user(void) {
+    if (oled_text_active) {
+        oled_clear();
+        oled_write(oled_buffer, false);
+    } else {
+        // Default OLED content when not in trainer mode  
+        oled_write_P(PSTR("Lily58\nFrogger\n"), false);
+        
+        // Show current layer
+        oled_write_P(PSTR("Layer: "), false);
+        oled_write_char('0' + get_highest_layer(layer_state), false);
+        oled_write_P(PSTR("\n"), false);
+        
+        // Show RGB mode if available
+        if (rgb_matrix_is_enabled()) {
+            oled_write_P(PSTR("RGB: "), false);
+            oled_write_char('0' + rgb_matrix_get_mode(), false);
+        }
+    }
+    return false;
+}
+#endif
