@@ -1,0 +1,27 @@
+# QMK Trainer CLI Configuration
+
+[layer_colors]
+# RGB values (0-255) for each layer - customize these to your preference
+0 = [0, 255, 0]      # Layer 0: Green (base layer)
+1 = [255, 165, 0]    # Layer 1: Orange (function/symbol layer)  
+2 = [255, 0, 0]      # Layer 2: Red (number layer)
+3 = [0, 0, 255]      # Layer 3: Blue (navigation layer)
+4 = [255, 0, 255]    # Layer 4: Magenta (RGB control layer)
+
+[training]
+default_duration = 2000  # Default LED highlight duration in milliseconds
+show_progress = true     # Show training progress bar in CLI
+prompt_delay = 500       # Delay between character prompts in ms
+
+[device]
+# USB VID/PID for Lily58 Pro device detection
+vendor_id = 0x7171
+product_id = 0x0002
+
+[advanced]
+# Advanced settings - modify with care
+led_timeout = 5000       # Maximum LED highlight duration in ms
+max_leds_per_chord = 20  # Maximum LEDs per chord highlight  
+oled_timeout = 3000      # OLED message display timeout in ms
+retry_attempts = 3       # Number of retry attempts for device communication
+communication_delay = 10 # Delay between HID commands in ms

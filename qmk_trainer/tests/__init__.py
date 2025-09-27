@@ -1,0 +1,1 @@
+# QMK Trainer CLI Tests
