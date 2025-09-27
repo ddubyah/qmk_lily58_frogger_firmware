@@ -10,8 +10,9 @@ from typing import List, Optional
 
 from qmk_trainer import __version__
 from .config import load_config, install_default_config
-from .hid_comm import VIADevice
+from .hid_comm import VIADevice, send_oled_text
 from .trainer import TrainingSession
+from .keyboard_trainer import app as trainer_app
 
 app = typer.Typer(
     name="qmk_trainer",
@@ -178,6 +179,31 @@ def config(
         raise typer.Exit(1)
 
 @app.command()
+def oled(
+    message: str = typer.Argument("Hello!", help="Message to display on OLED"),
+    duration: int = typer.Option(5, "--duration", "-d", help="Duration in seconds to show message"),
+) -> None:
+    """Send a test message to the OLED display."""
+    try:
+        with VIADevice() as via:
+            console.print(f"[green]✓[/green] Connected to VIA device")
+
+            console.print(f"[blue]→[/blue] Sending message to OLED: '{message}'")
+            send_oled_text(via.device, message)
+
+            console.print(f"[yellow]⏱[/yellow] Message should display for {duration} seconds...")
+            import time
+            time.sleep(duration)
+
+            # Clear OLED by sending empty message
+            send_oled_text(via.device, "")
+            console.print(f"[green]✓[/green] OLED test complete")
+
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+@app.command()
 def info() -> None:
     """Show device information and connection status."""
     try:
@@ -220,6 +246,9 @@ def main(
     if version:
         console.print(f"qmk_trainer version {__version__}")
         raise typer.Exit()
+
+# Add enhanced keyboard-based trainer controls
+app.add_typer(trainer_app, name="kb", help="Enhanced keyboard-based trainer controls")
 
 if __name__ == "__main__":
     app()

@@ -33,21 +33,23 @@ CMD_HIGHLIGHT_LEDS = 0x02
 CMD_TRAINER_BEGIN = 0x03
 CMD_TRAINER_END = 0x04
 CMD_OLED_TEXT = 0x10
+CMD_GET_FIRMWARE_INFO = 0x20
 
-def get_via_device() -> hid.Device:
+def get_via_device():
     """Find and connect to VIA-compatible device."""
     devices = hid.enumerate(VIA_VENDOR_ID, VIA_PRODUCT_ID)
     via_devices = [d for d in devices if d['usage_page'] == VIA_USAGE_PAGE]
-    
+
     if not via_devices:
         raise RuntimeError(
             f"No VIA device found. Expected VID:PID {VIA_VENDOR_ID:04X}:{VIA_PRODUCT_ID:04X} "
             f"with usage page {VIA_USAGE_PAGE:04X}"
         )
-    
+
     device_info = via_devices[0]
-    device = hid.Device(path=device_info['path'])
-    
+    device = hid.device()
+    device.open_path(device_info['path'])
+
     # Verify protocol version
     try:
         version = get_protocol_version(device)
@@ -55,36 +57,36 @@ def get_via_device() -> hid.Device:
             print(f"Warning: VIA protocol version {version} may not support all features")
     except Exception as e:
         print(f"Warning: Could not verify VIA protocol version: {e}")
-    
+
     return device
 
-def get_protocol_version(device: hid.Device) -> int:
+def get_protocol_version(device) -> int:
     """Get VIA protocol version from device."""
     response = send_via_command(device, VIA_COMMAND_GET_PROTOCOL_VERSION)
     return struct.unpack('>H', response[1:3])[0]
 
-def send_via_command(device: hid.Device, command: int, payload: bytes = b"") -> bytes:
+def send_via_command(device, command: int, payload: bytes = b"") -> bytes:
     """Send VIA command and receive response."""
     # VIA uses 32-byte reports
     report = bytearray(33)  # Report ID + 32 bytes
     report[0] = 0x00  # Report ID
     report[1] = command
-    
+
     if payload:
         payload_len = min(len(payload), 30)  # Max 30 bytes payload
         report[2:2+payload_len] = payload[:payload_len]
-    
+
     device.write(bytes(report))
-    response = device.read(32, timeout=1000)  # 1 second timeout
+    response = device.read(32)
     return bytes(response)
 
-def send_custom_command(device: hid.Device, command: int, payload: bytes = b"") -> bytes:
+def send_custom_command(device, command: int, payload: bytes = b"") -> bytes:
     """Send custom command via VIA_COMMAND_CUSTOM_VALUE."""
     # Custom commands are sent as VIA_COMMAND_CUSTOM_VALUE with our command as first payload byte
     custom_payload = bytes([command]) + payload
     return send_via_command(device, VIA_COMMAND_CUSTOM_VALUE, custom_payload)
 
-def get_matrix_to_led_map(device: hid.Device) -> Dict[Tuple[int, int], int]:
+def get_matrix_to_led_map(device) -> Dict[Tuple[int, int], int]:
     """Retrieve matrix position to LED index mapping from device."""
     response = send_custom_command(device, CMD_GET_LED_MAP)
     
@@ -105,7 +107,7 @@ def get_matrix_to_led_map(device: hid.Device) -> Dict[Tuple[int, int], int]:
     
     return matrix_to_led
 
-def get_keycode_at_location(device: hid.Device, layer: int, row: int, col: int) -> int:
+def get_keycode_at_location(device, layer: int, row: int, col: int) -> int:
     """Get keycode at specific matrix location and layer."""
     payload = struct.pack('BBB', layer, row, col)
     response = send_via_command(device, VIA_COMMAND_DYNAMIC_KEYMAP_GET_KEYCODE, payload)
@@ -117,7 +119,7 @@ def get_keycode_at_location(device: hid.Device, layer: int, row: int, col: int) 
     
     return 0  # KC_NO
 
-def scan_full_keymap(device: hid.Device, layers: int = 5, rows: int = 5, cols: int = 6) -> Dict[int, Dict[Tuple[int, int], int]]:
+def scan_full_keymap(device, layers: int = 5, rows: int = 5, cols: int = 6) -> Dict[int, Dict[Tuple[int, int], int]]:
     """Scan the complete keymap from the device.
     
     Returns a dictionary mapping layer -> {(row, col): keycode}
@@ -140,7 +142,7 @@ def scan_full_keymap(device: hid.Device, layers: int = 5, rows: int = 5, cols: i
     return keymap
 
 def highlight_leds_with_color(
-    device: hid.Device, 
+    device, 
     led_indexes: List[int], 
     color_rgb: Tuple[int, int, int], 
     duration_ms: int
@@ -157,27 +159,57 @@ def highlight_leds_with_color(
     
     send_custom_command(device, CMD_HIGHLIGHT_LEDS, bytes(payload))
 
-def send_trainer_begin(device: hid.Device) -> None:
+def send_trainer_begin(device) -> None:
     """Start trainer mode - saves RGB state and sets backdrop."""
     send_custom_command(device, CMD_TRAINER_BEGIN)
 
-def send_trainer_end(device: hid.Device) -> None:
+def send_trainer_end(device) -> None:
     """End trainer mode - restores RGB state."""
     send_custom_command(device, CMD_TRAINER_END)
 
-def send_oled_text(device: hid.Device, text: str) -> None:
+def send_oled_text(device, text: str) -> None:
     """Send text to display on OLED."""
     text_bytes = text.encode('utf-8')[:30]  # Limit to 30 bytes
     send_custom_command(device, CMD_OLED_TEXT, text_bytes)
 
-def get_device_info(device: hid.Device) -> Dict[str, str]:
+def get_firmware_info(device) -> Dict[str, str]:
+    """Get firmware build information."""
+    try:
+        response = send_custom_command(device, CMD_GET_FIRMWARE_INFO)
+
+        if response[0] == CMD_GET_FIRMWARE_INFO:
+            # Parse version and timestamp from response
+            version_end = 1
+            while version_end < len(response) and response[version_end] != 0:
+                version_end += 1
+
+            version = bytes(response[1:version_end]).decode('utf-8', errors='ignore')
+            timestamp = bytes(response[version_end+1:]).decode('utf-8', errors='ignore').rstrip('\x00')
+
+            return {
+                "firmware_version": version,
+                "build_timestamp": timestamp,
+                "trainer_enabled": "Yes"
+            }
+        else:
+            return {"error": "Invalid firmware info response"}
+    except Exception as e:
+        return {"error": str(e)}
+
+def get_device_info(device) -> Dict[str, str]:
     """Get basic device information for debugging."""
     try:
         # Get some basic keyboard values for identification
-        return {
+        basic_info = {
             "protocol_version": str(get_protocol_version(device)),
             "connected": "Yes",
         }
+
+        # Add firmware info if available
+        firmware_info = get_firmware_info(device)
+        basic_info.update(firmware_info)
+
+        return basic_info
     except Exception as e:
         return {
             "error": str(e),
@@ -188,7 +220,7 @@ class VIADevice:
     """Context manager for VIA device connections."""
     
     def __init__(self):
-        self.device: Optional[hid.Device] = None
+        self.device = None
         self.matrix_to_led_map: Dict[Tuple[int, int], int] = {}
         self.keymap: Dict[int, Dict[Tuple[int, int], int]] = {}
     

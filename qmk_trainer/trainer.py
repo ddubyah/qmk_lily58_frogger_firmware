@@ -6,7 +6,7 @@ Handles sequential training, progress tracking, and user interaction.
 from typing import Dict, List, Tuple, Any
 import time
 from rich.console import Console
-from rich.progress import Progress, TextColumn, BarColumn, TimeColumn
+from rich.progress import Progress, TextColumn, BarColumn, TimeRemainingColumn
 from rich.panel import Panel
 from rich.text import Text
 
@@ -57,7 +57,7 @@ class TrainingSession:
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeColumn(),
+            TimeRemainingColumn(),
             console=console
         ) as progress:
             

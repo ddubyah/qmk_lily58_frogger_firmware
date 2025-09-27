@@ -3,8 +3,8 @@
 
 #pragma once
 
-// VIA support with 5 layers
-#define DYNAMIC_KEYMAP_LAYER_COUNT 5
+// VIA support with 7 layers
+#define DYNAMIC_KEYMAP_LAYER_COUNT 7
 
 // RGB Matrix VIA menu support
 #define VIA_QMK_RGB_MATRIX_ENABLE

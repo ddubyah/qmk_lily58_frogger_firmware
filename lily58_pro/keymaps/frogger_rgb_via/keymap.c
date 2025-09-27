@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include QMK_KEYBOARD_H
+#include "print.h"
 
 // QMK Trainer CLI Commands
 #define CMD_GET_LED_MAP    0x01  // Return matrix_co mapping
@@ -9,6 +10,14 @@
 #define CMD_TRAINER_BEGIN  0x03  // Save RGB mode, set backdrop
 #define CMD_TRAINER_END    0x04  // Restore RGB mode
 #define CMD_OLED_TEXT      0x10  // Display text on OLED
+#define CMD_GET_FIRMWARE_INFO 0x20  // Get firmware build info
+
+// Build info - updated on each build
+#define TRAINER_FIRMWARE_VERSION "1.0.1"
+#define BUILD_TIMESTAMP __DATE__ " " __TIME__
+
+// Forward declaration
+void via_custom_value_command_kb(uint8_t *data, uint8_t length);
 
 // Trainer state variables
 static uint8_t hilite_leds[20];        // LED indexes to highlight
@@ -20,6 +29,7 @@ static uint16_t hilite_duration = 0;   // Duration in milliseconds
 static uint32_t hilite_started = 0;    // Timer start
 static bool trainer_active = false;    // Trainer mode flag
 static uint8_t saved_mode;   // Saved RGB mode
+
 
 #ifdef OLED_ENABLE
 static char oled_buffer[64];           // OLED text buffer
@@ -68,6 +78,22 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
   XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,                   XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
   XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
                              _______, _______, _______, _______, _______,  _______, _______, _______
+  ),
+
+  [5] = LAYOUT(
+  XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,                   XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
+  XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,                   XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
+  XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,                   XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
+  XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
+                             _______, _______, _______, _______, _______,  _______, _______, _______
+  ),
+
+  [6] = LAYOUT(
+  XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,                   XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
+  XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,                   XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
+  XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,                   XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
+  XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
+                             _______, _______, _______, _______, _______,  _______, _______, _______
   )
 };
 
@@ -77,12 +103,29 @@ const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][NUM_DIRECTIONS] = {
     [1] =  { ENCODER_CCW_CW(KC_TRNS, KC_TRNS),      ENCODER_CCW_CW(KC_TRNS, KC_TRNS)},
     [2] =  { ENCODER_CCW_CW(KC_TRNS, KC_TRNS),      ENCODER_CCW_CW(KC_TRNS, KC_TRNS)},
     [3] =  { ENCODER_CCW_CW(KC_TRNS, KC_TRNS),      ENCODER_CCW_CW(KC_TRNS, KC_TRNS)},
-    [4] =  { ENCODER_CCW_CW(KC_TRNS, KC_TRNS),      ENCODER_CCW_CW(KC_TRNS, KC_TRNS)}
+    [4] =  { ENCODER_CCW_CW(KC_TRNS, KC_TRNS),      ENCODER_CCW_CW(KC_TRNS, KC_TRNS)},
+    [5] =  { ENCODER_CCW_CW(KC_TRNS, KC_TRNS),      ENCODER_CCW_CW(KC_TRNS, KC_TRNS)},
+    [6] =  { ENCODER_CCW_CW(KC_TRNS, KC_TRNS),      ENCODER_CCW_CW(KC_TRNS, KC_TRNS)}
 };
 #endif
 // clang-format on
 
-// VIA Custom Command Handler
+// Console-based trainer commands
+void keyboard_post_init_user(void) {
+    // Enable debug and console output
+    debug_enable = true;
+    debug_matrix = false;
+    debug_keyboard = false;
+
+    print("QMK Trainer initialized!\n");
+    print("Commands: H<leds> = highlight, T = trainer mode, O<text> = OLED\n");
+}
+
+bool process_record_user(uint16_t keycode, keyrecord_t *record) {
+    return true;
+}
+
+// VIA Custom Command Handler (keeping for completeness)
 void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
     switch (data[0]) {
         case CMD_GET_LED_MAP: {
@@ -102,7 +145,6 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
                 }
             }
             response[0] = CMD_GET_LED_MAP; // Echo command
-            // VIA will handle the response automatically
             memcpy(data, response, 32);
             break;
         }
@@ -168,6 +210,30 @@ void via_custom_value_command_kb(uint8_t *data, uint8_t length) {
             break;
         }
 #endif
+
+        case CMD_GET_FIRMWARE_INFO: {
+            uint8_t response[32] = {0};
+            response[0] = CMD_GET_FIRMWARE_INFO; // Echo command
+
+            // Pack version string and build timestamp
+            const char* version = TRAINER_FIRMWARE_VERSION;
+            const char* timestamp = BUILD_TIMESTAMP;
+            uint8_t idx = 1;
+
+            // Copy version (max 8 chars)
+            for (uint8_t i = 0; i < 8 && version[i] && idx < 31; i++) {
+                response[idx++] = version[i];
+            }
+            response[idx++] = 0; // Null terminator
+
+            // Copy timestamp (remaining space)
+            for (uint8_t i = 0; timestamp[i] && idx < 31; i++) {
+                response[idx++] = timestamp[i];
+            }
+
+            memcpy(data, response, 32);
+            break;
+        }
     }
 }
 
@@ -176,10 +242,11 @@ bool rgb_matrix_indicators_advanced_user(uint8_t led_min, uint8_t led_max) {
     if (hilite_count > 0 && timer_elapsed32(hilite_started) < hilite_duration) {
         for (uint8_t i = 0; i < hilite_count; i++) {
             uint8_t idx = hilite_leds[i];
-            if (idx >= led_min && idx < led_max) {
+            if (idx >= led_min && idx < led_max && idx < RGB_MATRIX_LED_COUNT) {
                 rgb_matrix_set_color(idx, hilite_r, hilite_g, hilite_b);
             }
         }
+        return true; // Return true to indicate we've set custom colors
     }
     return false;
 }
@@ -192,7 +259,7 @@ bool oled_task_user(void) {
         oled_write(oled_buffer, false);
     } else {
         // Default OLED content when not in trainer mode  
-        oled_write_P(PSTR("Lily58\nFrogger\n"), false);
+        oled_write_P(PSTR("Frogger58\n"), false);
         
         // Show current layer
         oled_write_P(PSTR("Layer: "), false);
