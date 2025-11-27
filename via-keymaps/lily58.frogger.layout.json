@@ -147,8 +147,8 @@
     [
       "KC_TRNS",
       "KC_HOME",
-      "KC_PGUP",
       "KC_PGDN",
+      "KC_PGUP",
       "KC_END",
       "MACRO(1)",
       "KC_TRNS",
